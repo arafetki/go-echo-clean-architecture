@@ -8,7 +8,11 @@ type Config struct {
 		Debug   bool
 	}
 	Server struct {
-		Port int
+		Port                 int
+		ReadTimeoutDuration  int
+		WriteTimeoutDuration int
+		IdleTimeoutDuration  int
+		ShutdownPeriod       int
 	}
 	Database struct {
 		Dsn                 string
@@ -18,5 +22,9 @@ type Config struct {
 		ConnTimeoutDuration int
 		ConnMaxIdleDuration int
 		ConnMaxLifeDuration int
+	}
+
+	JWT struct {
+		SecretKey string
 	}
 }

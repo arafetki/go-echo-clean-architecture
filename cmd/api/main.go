@@ -2,18 +2,25 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
+	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/arafetki/go-echo-clean-architecture/internal/config"
-	databse "github.com/arafetki/go-echo-clean-architecture/internal/db"
+	database "github.com/arafetki/go-echo-clean-architecture/internal/db"
 	"github.com/arafetki/go-echo-clean-architecture/internal/env"
 	"github.com/labstack/echo/v4"
 	"github.com/lmittmann/tint"
 )
+
+type application struct {
+	echo   *echo.Echo
+	config config.Config
+	logger *slog.Logger
+	wg     sync.WaitGroup
+}
 
 func main() {
 
@@ -26,6 +33,11 @@ func main() {
 	cfg.App.Version = env.GetString("APP_VERSION", "0.1.0")
 	cfg.App.Debug = env.GetBool("APP_DEBUG", true)
 
+	cfg.Server.ReadTimeoutDuration = env.GetInt("SERVER_READ_TIMEOUT_SECONDS", 10)
+	cfg.Server.WriteTimeoutDuration = env.GetInt("SERVER_WRITE_TIMEOUT_SECONDS", 20)
+	cfg.Server.IdleTimeoutDuration = env.GetInt("SERVER_IDLE_TIMEOUT_SECONDS", 60)
+	cfg.Server.ShutdownPeriod = env.GetInt("SERVER_SHUTDOWN_PERIOD_SECONDS", 60)
+
 	cfg.Database.Dsn = env.GetString("DATABASE_DSN", "local:localrootsecret@localhost:5432/postgres?sslmode=disable")
 	cfg.Database.ConnTimeoutDuration = env.GetInt("DATABASE_CONN_TIMEOUT_SECONDS", 10)
 	cfg.Database.AutoMigrate = env.GetBool("DATABASE_AUTO_MIGRATE", true)
@@ -34,6 +46,8 @@ func main() {
 	cfg.Database.ConnMaxIdleDuration = env.GetInt("DATABASE_MAX_IDLE_DURATION_SECONDS", 300)
 	cfg.Database.ConnMaxLifeDuration = env.GetInt("DATABASE_MAX_LIFE_DURATION_SECONDS", 3600)
 
+	cfg.JWT.SecretKey = env.GetString("JWT_SECRET_KEY", "YK+8I3SYlMEs0cwv6CZ1QA5mYiltXcupiTJCEn/+7c4=")
+
 	logLevel := slog.LevelInfo
 	if cfg.App.Debug {
 		logLevel = slog.LevelDebug
@@ -41,7 +55,7 @@ func main() {
 
 	logger := slog.New(tint.NewHandler(os.Stdout, &tint.Options{Level: logLevel}))
 
-	db, err := databse.Pool(cfg.Database.Dsn, databse.Options{
+	db, err := database.Postgres(cfg.Database.Dsn, database.Options{
 		AutoMigrate:     cfg.Database.AutoMigrate,
 		MaxOpenConns:    cfg.Database.MaxOpenConns,
 		MaxIdleConns:    cfg.Database.MaxIdleConns,
@@ -57,13 +71,21 @@ func main() {
 
 	defer db.Close()
 
-	logger.Info("DB connected!")
+	logger.Info("database connection has been established successfully")
 
-	e := echo.New()
+	app := &application{
+		echo:   echo.New(),
+		config: cfg,
+		logger: logger,
+	}
 
-	e.GET("/hello", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, echo.Map{"message": "Hello World"})
-	})
+	app.registerRoutes()
 
-	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", cfg.Server.Port)))
+	err = app.run()
+	if err != nil {
+		trace := string(debug.Stack())
+		logger.Error(err.Error(), "trace", trace)
+		os.Exit(1)
+	}
+
 }

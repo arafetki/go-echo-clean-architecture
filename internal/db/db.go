@@ -1,4 +1,4 @@
-package databse
+package database
 
 import (
 	"context"
@@ -27,7 +27,7 @@ type Options struct {
 	AutoMigrate     bool
 }
 
-func Pool(dsn string, options Options) (*DB, error) {
+func Postgres(dsn string, options Options) (*DB, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), options.ConnTimeout)
 	defer cancel()
